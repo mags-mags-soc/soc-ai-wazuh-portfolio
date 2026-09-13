@@ -83,6 +83,15 @@ Three issues, in order of significance:
 
 **4. Collection gap.** The rule detects file creation but the host collects no image-load telemetry, so the follow-up question the rule raises cannot be answered. Detection and collection are misaligned.
 
+**5. Regex anchoring.** The extension list is not anchored with `$`, so `.js` also matches paths ending in `.json`. Reported upstream in 2023 ([#18465](https://github.com/wazuh/wazuh/issues/18465)) and still present in v4.14.7.
+
+### Reported upstream
+
+| Finding | Report |
+| --- | --- |
+| T1105 mapping not supported by the rule's match condition | [wazuh/wazuh#39227](https://github.com/wazuh/wazuh/issues/39227) (opened from this case) |
+| Missing `$` anchor in the extension pattern | [wazuh/wazuh#18465](https://github.com/wazuh/wazuh/issues/18465) (existing report; confirmed still present in v4.14.7) |
+
 ## Next investigation steps
 
 | Order | Action | Result to record |
@@ -90,7 +99,7 @@ Three issues, in order of significance:
 | 1 | Enable Sysmon EID 7 with a scoped filter, and EID 23/26 for temp paths | Whether load and deletion become answerable for future triggers |
 | 2 | Re-trigger the rule with telemetry enabled | A complete creation → load → cleanup sequence for the same behavior |
 | 3 | Draft and test a narrow local override for verified writing processes | Override scope, what remains detected, regression evidence |
-| 4 | Report the T1105 mapping issue upstream | Issue reference and outcome |
+| 4 | Track the upstream reports | Maintainer response and any ruleset change |
 
 ## Decision log
 
@@ -99,6 +108,7 @@ Three issues, in order of significance:
 | 2026-09-13 | Case opened; kept unresolved pending evidence | The exported report alone could not distinguish the competing hypotheses |
 | 2026-09-13 | Original record declared not retrievable; investigated a fresh trigger of the same rule instead | `alerts.json` rotation; the substitution is recorded rather than conflated |
 | 2026-09-13 | Closed as benign with recorded gaps | Provenance, internal consistency and launch chain verified; no supporting evidence for transfer or DLL abuse |
+| 2026-09-13 | Reported the mapping defect upstream | The issue originates in the shipped ruleset, not in this environment, so it belongs upstream rather than in a local override |
 
 ## Scope and limitations
 
