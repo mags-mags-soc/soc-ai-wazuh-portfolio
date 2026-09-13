@@ -15,9 +15,9 @@ I am preparing for a SOC Analyst / Blue Team role. In my homelab, I use Wazuh an
 
 | Case | Focus | Stage | Disposition |
 | --- | --- | --- | --- |
-| [001 — Temporary DLL creation](cases/001-temporary-dll-triage.md) | Review a reported Wazuh alert and distinguish file creation from loading or transfer | In progress: report review and investigation plan | Unresolved |
+| [001 — Temporary DLL creation](cases/001-temporary-dll-triage.md) | Distinguish file creation from loading or transfer for a temp-directory DLL alert | Closed — evidence collected | Benign, with recorded collection gaps |
 
-The current case starts from an exported report. Its next milestone is checking the original event and collecting corroborating endpoint evidence. The case index will separate in-progress work from completed investigations.
+Case 001 is closed. The original reported record had rotated out of retention, so I verified the installed rule definition, captured a fresh trigger of the same rule with full telemetry, and checked binary provenance and launch chain on the endpoint. The disposition is recorded together with the collection gaps that remain.
 
 ## My lab workflow
 

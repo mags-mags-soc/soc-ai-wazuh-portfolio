@@ -1,93 +1,109 @@
 # Case 001 — Temporary DLL Creation
 
-**Review date:** 2026-09-13 (UTC; document review date)  
-**Stage:** in progress — report review and investigation plan  
-**Disposition:** unresolved  
-**Detection context:** reported Wazuh rule `92213`; Sysmon FileCreate detection family
+**Review date:** 2026-09-13 (UTC; document review date)
+**Source event:** 2026-09-13T12:44:35Z
+**Stage:** closed — evidence collected
+**Disposition:** benign — expected application behavior, with recorded collection gaps
+**Detection context:** Wazuh rule `92213` (verified in `0830-sysmon_id_11.xml`), Sysmon Event ID 11 (FileCreate)
 
 ## Starting point
 
 My SOC AI Assistant produced a report describing a Windows process writing a DLL to a temporary directory. Its analysis suggested possible malicious staging and discussed Ingress Tool Transfer.
 
-My question for this case is: **does the file creation belong to expected application unpacking, or is there evidence of malicious transfer or DLL abuse?**
+My question for this case was: **does the file creation belong to expected application behavior, or is there evidence of malicious transfer or DLL abuse?**
 
-The report provides a starting point for that question. A decision requires the original event, file provenance and correlated activity. I keep the case open while those evidence gaps remain.
+I could not retrieve the original alert record — the manager's `alerts.json` had rotated and the date in question was no longer retained. Instead I captured a fresh trigger of the same rule with complete telemetry and investigated that. The two are separate events. Everything below describes the event I collected, not the one the assistant originally reported.
 
 ## Evidence register
 
-“Verified” below means checked against the original event or endpoint evidence, not simply repeated in the exported report.
+"Verified" below means checked against the original event, the installed rule definition or endpoint state — not repeated from the exported report.
 
-| Item | Available information | Source | Verified? |
+| Item | Finding | Source | Status |
 | --- | --- | --- | --- |
-| Detection rule | Wazuh rule `92213` is identified in the export | Exported report | Report-derived; original alert and installed rule pending |
-| Event family | Sysmon file-creation detection group | Exported report | Exact source-event ID pending |
-| Reported behavior | A process wrote a DLL to a temporary directory | Exported report | Original event pending |
-| File provenance | Hashes, signer and trusted baseline | Not collected for this review | Pending |
-| Process ancestry | Parent process, command line and process GUID | Not supplied | Pending |
-| Subsequent activity | Module loading, DNS and network correlation | Not supplied | Pending |
+| Detection rule | `92213`, level 15, `if_group: sysmon_event_11`, single `targetFilename` PCRE2 condition | Installed ruleset `0830-sysmon_id_11.xml` | Verified |
+| Event type | Sysmon Event ID 11 (FileCreate), `RuleName: DLL` | Raw alert | Verified |
+| Writing process | Signed vendor desktop application under `C:\Program Files\WindowsApps\` (MSIX package) | Raw alert | Verified |
+| Target file | `%LOCALAPPDATA%\Temp\chromium_chrome_Unpacker_BeginUnzipping<pid>_<random>\_platform_specific\win_x64\widevinecdm.dll` | Raw alert | Verified |
+| Directory ↔ process correlation | The PID embedded in the unpacker directory name matches the `ProcessId` in the same event | Raw alert | Verified |
+| Binary provenance | Authenticode `Valid`, signer `CN="OpenAI OpCo, LLC", O="OpenAI OpCo, LLC", L=San Francisco, S=California, C=US` | `Get-AuthenticodeSignature` on the endpoint | Verified |
+| Launch chain | Main process started by `C:\Windows\System32\sihost.exe`, Medium integrity, 3m33s before the file event; child renderer processes at Low integrity | Sysmon EID 1 on the endpoint | Verified |
+| DLL hash and signature | File no longer present at review time | Endpoint check | Not collectable |
+| DLL load into a process | Sysmon EID 7 is not collected on this host | Endpoint log inventory | Collection gap |
+| Temp directory cleanup | Sysmon EID 23 / 26 are not collected on this host | Endpoint log inventory | Collection gap |
+| Original reported event | `alerts.json` rotated; record not retained | Manager log inventory | Not retrievable |
 
-The rule identifier is public detection metadata. Its presence in an export does not establish the installed rule version or prove that the underlying event matches the report. The Sysmon family suggests Event ID 11, which must be confirmed from the source record.
+## What the evidence shows
 
-## Hypotheses and discriminating evidence
+The writing process is a Chromium/Electron desktop application distributed as a signed MSIX package. Chromium unpacks bundled components into a per-process temporary directory using the `chromium_chrome_Unpacker_BeginUnzipping<pid>_<random>` naming convention, and `widevinecdm.dll` is the Widevine DRM module shipped inside such bundles.
 
-| Hypothesis | Evidence that would support it | What would challenge it |
-| --- | --- | --- |
-| Expected dependency extraction | Trusted binary provenance, an expected launch chain and application activity consistent with unpacking | Unexpected parent, modified binary or behavior inconsistent with the application |
-| Malicious file transfer | A correlated transfer command or network record showing the file entering the environment in an adversarial context | Evidence of local extraction from an expected application bundle |
-| DLL hijacking or side-loading | A process loads an attacker-controlled DLL through an abused DLL resolution mechanism | Expected dependencies loaded from a verified application package |
+Three independent observations support the expected-behavior reading:
 
-PyInstaller one-file applications can extract dependencies to temporary directories. Its naming convention is a clue to investigate, rather than proof of the packager or of benign behavior. [PyInstaller: how the one-file program works](https://pyinstaller.org/en/stable/operating-mode.html#how-the-one-file-program-works)
+1. **Provenance.** The parent binary carries a valid Authenticode signature from the vendor, and MSIX installation enforces signature validation at install time.
+2. **Internal consistency.** The PID embedded in the unpacker directory name matches the process that wrote the file, in the same event. A file dropped by an unrelated process would not produce this correspondence.
+3. **User-initiated launch.** The process tree roots at `sihost.exe`, which starts packaged applications in response to user interaction. There is no scheduled task, service, script interpreter or remote-execution parent in the chain.
 
-## Sysmon correlation plan
+The file was written to a directory the application created for its own process, from a bundle it already shipped, in a session the user started.
 
-These are event types to look for, not events already found in this investigation.
+## What the evidence does not show
 
-| Event ID | Correlation purpose |
-| --- | --- |
-| **11 — FileCreate** | Validate creation or overwrite of the target file. |
-| **1 — Process creation** | Inspect the command line and parent; correlate by process GUID, host and time. |
-| **7 — Image loaded** | Check whether the DLL was loaded into a process. This alone does not prove execution of a particular payload. |
-| **3 — Network connection** | Associate connections with the process; corroborate file transfer using additional evidence. |
-| **22 — DNS query** | Identify process-related DNS activity where collected. |
+I did not establish that the DLL was loaded, because Event ID 7 is not collected on this host. I did not establish that the temporary directory was cleaned up on exit, because Event ID 23/26 are not collected either. The file was gone by review time, but absence at review time does not by itself demonstrate deliberate cleanup — it is consistent with it, not proof of it.
 
-Image-load and network-connection collection are disabled by default. I need to check the configuration and retention that applied at the event time. Enabling collection later will not recover historical events. Missing events must be interpreted alongside those gaps.
+I also did not analyse the DLL itself. No hash or signature could be collected because the file no longer existed. A valid parent signature does not authenticate a file that parent writes.
 
-Microsoft references: [EID 11](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-11-filecreate), [EID 1](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-1-process-creation), [EID 7](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-7-image-loaded), [EID 3](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-3-network-connection), [EID 22](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-22-dnsevent-dns-query).
+Enabling this telemetry now would not recover the historical events. These gaps are recorded rather than resolved.
+
+## Disposition
+
+**Benign — expected application behavior.**
+
+The claim is not that the DLL was proven clean. The claim is that a signed vendor application unpacked a component from its own bundle into its own per-process temporary directory during a user-initiated session, that every collected artifact is consistent with that explanation, and that no artifact supports transfer from an external system or abuse of DLL resolution. The unresolved items above are stated rather than assumed away.
 
 ## ATT&CK assessment
 
-| Technique | Current status | Evidence needed |
+| Technique | Status | Basis |
 | --- | --- | --- |
-| [T1105 — Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/) | Mapping discussed in the report; unconfirmed | Evidence of adversary tool/file transfer from an external system, correlated with the file event |
-| [T1574.001 — DLL](https://attack.mitre.org/techniques/T1574/001/) | Conditional research hypothesis, not an observed technique | Evidence of attacker control and abuse of which DLL a process loads, such as side-loading or search-order hijacking |
+| [T1105 — Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/) | Not supported by the evidence | The observed behavior is a local write from a process's own package. No external transfer or C2 artifact was observed. |
+| [T1574.001 — Hijack Execution Flow: DLL](https://attack.mitre.org/techniques/T1574/001/) | Not supported by the evidence | Would require evidence of attacker control over which DLL a process loads. Load telemetry is not collected here, so this was neither observed nor excludable. |
 
-The current T1574.001 definition includes DLL side-loading and search-order hijacking. I would investigate it if the process and module evidence points to DLL resolution abuse. A DLL file drop alone does not justify assigning it.
+**The T1105 mapping does not originate with the AI report.** It is hard-coded in the `<mitre>` block of rule `92213` in the upstream Wazuh ruleset, so every alert this rule produces carries it — tactic *Command and Control*, technique *Ingress Tool Transfer*. The assistant inherited the label from the detection, then reasoned from it.
 
-The useful correction to the initial assessment is to separate **creation**, **transfer** and **loading**. Each requires different evidence; a technique label must follow the supported behavior.
+This matters because the rule's own match condition cannot support that mapping. The rule matches on `targetFilename` alone: any executable-extension file written under `%LOCALAPPDATA%\Temp\`. A local file write is not evidence of tool transfer from an external system. The technique label is attached upstream of any evidence about how the file arrived.
+
+The useful correction to the initial assessment is therefore to separate **creation**, **transfer** and **loading**. Each requires different evidence. This case had creation telemetry only.
+
+## Detection improvement
+
+Three issues, in order of significance:
+
+**1. Mapping defect.** `92213` asserts T1105 on a condition that cannot establish transfer. The mapping should be removed or replaced with one the match condition can support.
+
+**2. No context conditions.** The rule tests a single field. It has no `image`, `parentImage` or command-line condition, so every application that unpacks a component to `%TEMP%` triggers it — a common pattern for Electron, Chromium-based and packer-built software. A narrow, documented `if_sid` override keyed on verified writing processes would reduce this without creating a blanket temp-directory exclusion.
+
+**3. Severity.** Level 15 is near the top of the Wazuh scale. A single-field match with no execution or provenance context does not justify it. This is what drove the high severity in the initial report.
+
+**4. Collection gap.** The rule detects file creation but the host collects no image-load telemetry, so the follow-up question the rule raises cannot be answered. Detection and collection are misaligned.
 
 ## Next investigation steps
 
 | Order | Action | Result to record |
 | --- | --- | --- |
-| 1 | Retrieve the original alert and installed rule definition | Event ID, source UTC time, rule version/overrides and relevant decoded fields |
-| 2 | Check Sysmon configuration and log retention | Which event types were available during the relevant period |
-| 3 | Collect SHA-256 and Authenticode details for available files | Hash, signature status, signer and comparison with a trusted baseline |
-| 4 | Correlate process creation and module loading | Launch chain, command line, process GUID and any matching DLL-load event |
-| 5 | Correlate network/DNS and application logs | Evidence for transfer or expected application activity, with collection gaps |
-| 6 | Record the disposition | Decision, supporting evidence, remaining uncertainty and any justified response |
-
-The original report lacked a documented method for validating its confidence estimates. I therefore base the eventual decision on the collected evidence rather than those estimates. Signature checks contribute to provenance; they need corroboration from execution context and behavior.
+| 1 | Enable Sysmon EID 7 with a scoped filter, and EID 23/26 for temp paths | Whether load and deletion become answerable for future triggers |
+| 2 | Re-trigger the rule with telemetry enabled | A complete creation → load → cleanup sequence for the same behavior |
+| 3 | Draft and test a narrow local override for verified writing processes | Override scope, what remains detected, regression evidence |
+| 4 | Report the T1105 mapping issue upstream | Issue reference and outcome |
 
 ## Decision log
 
 | Review date | Decision | Reason |
 | --- | --- | --- |
-| 2026-09-13 | Keep the case unresolved; collect original and correlated evidence | The exported report alone cannot distinguish the competing hypotheses |
-
-Expected activity can support a benign disposition once provenance and execution context are corroborated. Evidence of tampering, malicious files or an attack chain would support escalation. Any detection exception must be narrow and follow validation.
+| 2026-09-13 | Case opened; kept unresolved pending evidence | The exported report alone could not distinguish the competing hypotheses |
+| 2026-09-13 | Original record declared not retrievable; investigated a fresh trigger of the same rule instead | `alerts.json` rotation; the substitution is recorded rather than conflated |
+| 2026-09-13 | Closed as benign with recorded gaps | Provenance, internal consistency and launch chain verified; no supporting evidence for transfer or DLL abuse |
 
 ## Scope and limitations
 
-Completed work: review of the exported report, checking technical references, and documenting hypotheses and an evidence-collection plan. The endpoint checks above remain pending. This public edition omits underlying operational records; it should be read as work in progress, not a completed incident investigation.
+Completed work: verified the installed rule definition, captured and analysed a raw alert, checked binary provenance and launch chain on the endpoint, inventoried Sysmon collection coverage, and documented the disposition with its gaps.
+
+The analysed event is not the event the assistant originally reported; that record was no longer retained. Host identifiers and the local user name are normalised in this public edition. Underlying operational records are excluded.
 
 [Case index](README.md) · [Portfolio and method](../README.md#method-and-tooling) · [Application source](https://github.com/mags-mags-soc/ai-soc-assistant)
