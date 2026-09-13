@@ -1,0 +1,16 @@
+# Local-only evidence and secrets; inspect browser uploads separately.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+private/
+raw-evidence/
+*.evtx
+*.dmp
+*.pcap
+*.pcapng
+__pycache__/
+.venv/
