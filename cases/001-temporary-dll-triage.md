@@ -1,77 +1,93 @@
-# Case 001 — Reviewing a Temporary DLL Creation Alert
+# Case 001 — Temporary DLL Creation
 
-**Context:** personal SOC homelab  
-**Review type:** AI-assisted review of an exported alert report  
-**Disposition:** open — insufficient evidence for a final verdict
+**Review date:** 2026-09-13 (UTC; document review date)  
+**Stage:** in progress — report review and investigation plan  
+**Disposition:** unresolved  
+**Detection context:** reported Wazuh rule `92213`; Sysmon FileCreate detection family
 
-## Executive summary
+## Starting point
 
-A Wazuh report described a Windows process writing a DLL to a temporary directory. The SOC AI Assistant suggested possible malicious file staging and proposed investigation steps.
+My SOC AI Assistant produced a report describing a Windows process writing a DLL to a temporary directory. Its analysis suggested possible malicious staging and discussed Ingress Tool Transfer.
 
-The available report supports investigating the activity. It does not establish that the executable is authentic, that the DLL is malicious, or that a remote transfer occurred. Expected application unpacking is a competing hypothesis. This public case study documents the reasoning and next checks without publishing the underlying operational records.
+My question for this case is: **does the file creation belong to expected application unpacking, or is there evidence of malicious transfer or DLL abuse?**
 
-## Environment and scope
+The report provides a starting point for that question. A decision requires the original event, file provenance and correlated activity. I keep the case open while those evidence gaps remain.
 
-The lab owner runs a SOC AI Assistant on an Ubuntu VM and uses it to analyze Wazuh alerts. The reviewed export includes Windows event information and a Sysmon-related detection group.
+## Evidence register
 
-Only the exported report was available for this review. The original event record, assistant source code, binary files and endpoint were not inspected. No live investigation or remediation was performed while preparing this write-up.
+“Verified” below means checked against the original event or endpoint evidence, not simply repeated in the exported report.
 
-## Observations and hypotheses
+| Item | Available information | Source | Verified? |
+| --- | --- | --- | --- |
+| Detection rule | Wazuh rule `92213` is identified in the export | Exported report | Report-derived; original alert and installed rule pending |
+| Event family | Sysmon file-creation detection group | Exported report | Exact source-event ID pending |
+| Reported behavior | A process wrote a DLL to a temporary directory | Exported report | Original event pending |
+| File provenance | Hashes, signer and trusted baseline | Not collected for this review | Pending |
+| Process ancestry | Parent process, command line and process GUID | Not supplied | Pending |
+| Subsequent activity | Module loading, DNS and network correlation | Not supplied | Pending |
 
-| Category | Assessment |
+The rule identifier is public detection metadata. Its presence in an export does not establish the installed rule version or prove that the underlying event matches the report. The Sysmon family suggests Event ID 11, which must be confirmed from the source record.
+
+## Hypotheses and discriminating evidence
+
+| Hypothesis | Evidence that would support it | What would challenge it |
+| --- | --- | --- |
+| Expected dependency extraction | Trusted binary provenance, an expected launch chain and application activity consistent with unpacking | Unexpected parent, modified binary or behavior inconsistent with the application |
+| Malicious file transfer | A correlated transfer command or network record showing the file entering the environment in an adversarial context | Evidence of local extraction from an expected application bundle |
+| DLL hijacking or side-loading | A process loads an attacker-controlled DLL through an abused DLL resolution mechanism | Expected dependencies loaded from a verified application package |
+
+PyInstaller one-file applications can extract dependencies to temporary directories. Its naming convention is a clue to investigate, rather than proof of the packager or of benign behavior. [PyInstaller: how the one-file program works](https://pyinstaller.org/en/stable/operating-mode.html#how-the-one-file-program-works)
+
+## Sysmon correlation plan
+
+These are event types to look for, not events already found in this investigation.
+
+| Event ID | Correlation purpose |
 | --- | --- |
-| Reported observation | A process created a DLL in a temporary directory. |
-| Potential benign explanation | A bundled application may unpack dependencies during execution. |
-| Potential suspicious explanation | A modified or impersonating executable may stage a payload. |
-| Missing evidence | Binary provenance, process ancestry, subsequent activity and network correlation. |
-| Current decision | Keep the investigation open until sufficient evidence supports a disposition. |
+| **11 — FileCreate** | Validate creation or overwrite of the target file. |
+| **1 — Process creation** | Inspect the command line and parent; correlate by process GUID, host and time. |
+| **7 — Image loaded** | Check whether the DLL was loaded into a process. This alone does not prove execution of a particular payload. |
+| **3 — Network connection** | Associate connections with the process; corroborate file transfer using additional evidence. |
+| **22 — DNS query** | Identify process-related DNS activity where collected. |
 
-Temporary extraction can be expected behavior for bundled Python applications. This is a general explanation to test, not verification of the executable in this case. [PyInstaller operating model](https://pyinstaller.org/en/stable/operating-mode.html)
+Image-load and network-connection collection are disabled by default. I need to check the configuration and retention that applied at the event time. Enabling collection later will not recover historical events. Missing events must be interpreted alongside those gaps.
 
-File creation telemetry does not by itself establish that a DLL was subsequently loaded or executed. [Microsoft Sysmon documentation](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon)
+Microsoft references: [EID 11](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-11-filecreate), [EID 1](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-1-process-creation), [EID 7](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-7-image-loaded), [EID 3](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-3-network-connection), [EID 22](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-22-dnsevent-dns-query).
 
-## Reviewing the AI assessment
+## ATT&CK assessment
 
-The AI output is a starting point for triage. Its claims require separate validation:
+| Technique | Current status | Evidence needed |
+| --- | --- | --- |
+| [T1105 — Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/) | Mapping discussed in the report; unconfirmed | Evidence of adversary tool/file transfer from an external system, correlated with the file event |
+| [T1574.001 — DLL](https://attack.mitre.org/techniques/T1574/001/) | Conditional research hypothesis, not an observed technique | Evidence of attacker control and abuse of which DLL a process loads, such as side-loading or search-order hijacking |
 
-- A high alert severity is not a confirmed compromise verdict.
-- Model-generated confidence and false-positive estimates should not be presented as measured probabilities without a documented validation method.
-- A familiar application name or installation location does not authenticate a binary.
-- Application packaging alone does not demonstrate malicious intent.
-- A local file creation does not establish adversary tool transfer from an external system.
-- Hypothetical impact must be distinguished from observed impact.
+The current T1574.001 definition includes DLL side-loading and search-order hijacking. I would investigate it if the process and module evidence points to DLL resolution abuse. A DLL file drop alone does not justify assigning it.
 
-An Ingress Tool Transfer mapping requires evidence supporting the adversary transfer behavior. It remains unconfirmed here. [MITRE ATT&CK T1105](https://attack.mitre.org/techniques/T1105/)
+The useful correction to the initial assessment is to separate **creation**, **transfer** and **loading**. Each requires different evidence; a technique label must follow the supported behavior.
 
-## Investigation plan — pending
+## Next investigation steps
 
-| Check | Purpose |
-| --- | --- |
-| Retrieve and validate the original Wazuh and Sysmon records privately | Confirm event type, time and correlation keys. |
-| Collect binary hashes, signature details and provenance where available | Assess whether the files match a trusted baseline. |
-| Review parent process, command line and child processes | Establish how the activity started and what followed. |
-| Correlate network, DNS and module-load telemetry where collected | Look for transfers or later DLL loading. |
-| Compare application logs and user-confirmed activity | Test the expected application behavior hypothesis. |
-| Record an evidence-backed disposition | Explain closure, escalation or remaining uncertainty. |
+| Order | Action | Result to record |
+| --- | --- | --- |
+| 1 | Retrieve the original alert and installed rule definition | Event ID, source UTC time, rule version/overrides and relevant decoded fields |
+| 2 | Check Sysmon configuration and log retention | Which event types were available during the relevant period |
+| 3 | Collect SHA-256 and Authenticode details for available files | Hash, signature status, signer and comparison with a trusted baseline |
+| 4 | Correlate process creation and module loading | Launch chain, command line, process GUID and any matching DLL-load event |
+| 5 | Correlate network/DNS and application logs | Evidence for transfer or expected application activity, with collection gaps |
+| 6 | Record the disposition | Decision, supporting evidence, remaining uncertainty and any justified response |
 
-All checks above are pending. Missing telemetry is not evidence that the corresponding behavior did not occur. A valid signature alone also does not prove benign behavior.
+The original report lacked a documented method for validating its confidence estimates. I therefore base the eventual decision on the collected evidence rather than those estimates. Signature checks contribute to provenance; they need corroboration from execution context and behavior.
 
-## Decision criteria
+## Decision log
 
-**Expected activity:** sufficient corroboration of application provenance and execution context, with evidence gaps recorded.
+| Review date | Decision | Reason |
+| --- | --- | --- |
+| 2026-09-13 | Keep the case unresolved; collect original and correlated evidence | The exported report alone cannot distinguish the competing hypotheses |
 
-**Suspicious or malicious activity:** supporting findings such as binary tampering, malicious file analysis or a correlated attack chain.
+Expected activity can support a benign disposition once provenance and execution context are corroborated. Evidence of tampering, malicious files or an attack chain would support escalation. Any detection exception must be narrow and follow validation.
 
-**Unresolved:** insufficient evidence for either conclusion. This is the current disposition.
+## Scope and limitations
 
-No blanket exclusion for temporary directories or a familiar application is justified by this review. Any future tuning should follow validation and have a narrow, documented scope.
+Completed work: review of the exported report, checking technical references, and documenting hypotheses and an evidence-collection plan. The endpoint checks above remain pending. This public edition omits underlying operational records; it should be read as work in progress, not a completed incident investigation.
 
-## Contribution and limitations
-
-The lab's SOC AI Assistant produced the initial report. This write-up was prepared with ChatGPT assistance to review claims, distinguish observations from hypotheses and document the next investigation steps.
-
-Completed work consists of document review and preparation of this public case study. Binary analysis, endpoint investigation, final classification and response actions are not claimed.
-
-The public repository omits the incident export and its identifying and operational details. It demonstrates a triage method, not a completed malware investigation.
-
-[Back to the portfolio](../README.md)
+[Case index](README.md) · [Portfolio and method](../README.md#method-and-tooling) · [Application source](https://github.com/mags-mags-soc/ai-soc-assistant)

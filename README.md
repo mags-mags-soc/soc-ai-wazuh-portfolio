@@ -1,46 +1,39 @@
-# AI-Assisted SOC Triage with Wazuh
+# SOC Investigation Portfolio
 
-A personal SOC homelab portfolio exploring how AI-generated alert analysis can support an evidence-based investigation.
+I am preparing for a SOC Analyst / Blue Team role. In my homelab, I use Wazuh and Windows endpoint telemetry, and I run my SOC AI Assistant on an Ubuntu VM to help explain alerts and plan investigations.
 
-**First case:** reviewing a temporary DLL creation alert.  
-**Status:** open — further evidence is required for a final verdict.
+[Application source and setup](https://github.com/mags-mags-soc/ai-soc-assistant) · [Case index](cases/README.md) · [Current case](cases/001-temporary-dll-triage.md)
 
-[Read the case study](cases/001-temporary-dll-triage.md)
+## Two parts of the project
 
-## Lab workflow
-
-| Component | Role |
+| Repository | What it contains |
 | --- | --- |
-| Windows endpoint / Sysmon | Endpoint event telemetry |
-| Wazuh | Detection and alert context |
-| SOC AI Assistant on an Ubuntu VM | Initial analysis and report generation |
-| Document review | Assess claims, compare hypotheses and define follow-up checks |
+| [AI SOC Assistant](https://github.com/mags-mags-soc/ai-soc-assistant) | Application code, setup instructions, tests and development documentation |
+| This portfolio | Case notes, evidence status, investigation questions and documented decisions |
 
-The lab environment is described by its owner. This repository documents a review of an exported alert report; the underlying integration and application code have not been independently inspected.
+## Current work
 
-## What the case demonstrates
+| Case | Focus | Stage | Disposition |
+| --- | --- | --- | --- |
+| [001 — Temporary DLL creation](cases/001-temporary-dll-triage.md) | Review a reported Wazuh alert and distinguish file creation from loading or transfer | In progress: report review and investigation plan | Unresolved |
 
-- Separating an alert's severity from a confirmed incident verdict.
-- Comparing potential malicious staging with expected application unpacking.
-- Checking whether an ATT&CK mapping is supported by available evidence.
-- Treating AI-generated confidence scores as unverified unless validated.
-- Planning the evidence collection needed to resolve an alert.
-- Publishing a case study with clear limitations and without operational records.
+The current case starts from an exported report. Its next milestone is checking the original event and collecting corroborating endpoint evidence. The case index will separate in-progress work from completed investigations.
 
-## Current finding
+## My lab workflow
 
-The reviewed export describes a file creation but lacks the evidence needed to confirm compromise or close the alert as benign. The case remains open.
+| Component | Purpose |
+| --- | --- |
+| Windows / Sysmon | Collect endpoint telemetry |
+| Wazuh | Generate alerts with rule and event context |
+| SOC AI Assistant on Ubuntu | Produce an initial assessment and Markdown report |
+| Case notes | Track observations, hypotheses, evidence gaps and disposition |
 
-## Repository scope
+## Method and tooling
 
-This is a documentation portfolio. It does not contain an installable release of the SOC AI Assistant, its source code or the underlying incident export.
+My SOC AI Assistant generated the initial report. ChatGPT helped prepare and technically review these documents. I distinguish report-derived statements from raw-event verification; the case records which checks still need evidence.
 
-The original assistant generated the initial analysis. This write-up and its review were prepared with ChatGPT assistance. No live endpoint investigation, malware removal or measured detection improvement is claimed.
+## Reading this portfolio
 
-## Next steps
+Each case includes its review date, source status, technical references and the evidence needed for a decision. Review dates describe document work, not the time of an incident. Underlying operational records are excluded from this public edition.
 
-- Validate the original event records privately.
-- Verify file provenance and correlate related process and network activity.
-- Update the case with an evidence-backed disposition when those checks are completed.
-
-Official technical references are linked directly in the [case study](cases/001-temporary-dll-triage.md).
+Start with the [application repository](https://github.com/mags-mags-soc/ai-soc-assistant) for implementation details and the [case index](cases/README.md) for investigation progress.
